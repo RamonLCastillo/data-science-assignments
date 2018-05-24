@@ -1,8 +1,37 @@
 ---
 title: "Assignment 1"
-author: 'Your name'
+author: 'Ramon Castillo'
 output: html_document
 ---
+# Ramon Castillo
+
+```{r} 
+## I'M LEARNING DATA SCIENCE!!!
+```
+
+![](Ramon Castillo.JPG)
+
+### Professional Background
+
+* SAP SuccessFactors, Miami, FL Jul 2015 - Present
+  Sales Development Executive
+
+* Boba Station Food Truck, Miami, FL  Oct 2011 - Dec 2017
+  Owner - Operator
+
+* Kaplan University Ft Lauderdale, FL Jun 2010 - Apr 2012
+  Sales Operations Manager
+
+### Skill Sets
+* Enterprise Sales, Entrepreneurship, Investment Finance
+
+### Interests
+* Data Science, Machine Learning, Fishing
+
+
+
+
+
 
 
 
