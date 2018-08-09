@@ -1,0 +1,317 @@
+---
+title: "NCAA Play-by-Play Stats: A solution for the NBA draft"
+output: html_document
+---
+
+###### NCAA Play-by-Play Stats: A solution for the NBA draft
+
+## Intro
+Our data science team is trying to find a better way to draft NCAA college basketball players. NBA teams risk millions of dollars drafting players that they believe witll perform well on the professional level. As the NBA Draft Lottery name implies, this process is a lottery. Some players drafted high underperform, while others that overperform are selected late in the draft. Our goal is to  predict the "top" NBA performers by analyzing NCAA play-by-play stats of individual players dating back to 2013. 
+
+    ***Note: Our goal is to review  NCAA player stats for players for games decided by 6 or less points.***
+
+Once we determine the attributes that will be associated with NBA player "success" we will use NCAA stats of "close games" (defined as games within 6 points of each other in the last five minutes of the game and overtime) to feature engineer a supervised machine learning model that will predict the best draft pick line-up for NBA general managers. 
+
+Therefore, by implementing this model we can improve the current process by which NBA general managers identify, select and determine the heftiness of each NCAA player's professional contract. 
+
+## Data Acquisition
+Explain where you retrieved the data from and the process.
+
+     1.NCAA Play-by-Play Data (2013-2017) was retrieved from Kaggle's NCAA API as a flat file (.csv). Just one of the 40+ NCAA PBP flat files has a little over 36,000 observations and a total of 71 variables. 
+    ***Note: Given that each observation is considered a specific "play" in a "specific game" the data had to be split into several files in order for data scientists like US to manipulate  the data without blowing up their computers.
+    Given that we didnt have a lot of computing power we began by dowloading the seven largest files available to start our initial exploration. We then started removing all the variables that we percieved had no bearing on future NBA success in order to decrease the size of the file. In doing so, we were able to remove more than half of the 71 variables. Leaving us with a total of 37 attributes.
+     After getting some idea of what we would be working with Cata was able to quiry directing from the data base wrote a query to limit the size of the all the files at the same time. Therefore, she was able to render everything down to one file instead of our original plan which was to work on each of the 40 files seperately and then merging them at the end. PHEW! THANKS CATA <3
+     
+     2. NBA Player data (dating back to 1950's - present) was retrieved from NBA.com. The original data set contained of observations and 11 varibales. We began cleaning up this data by removing all records before 2013. 
+     
+     3. NBA Drafted Player Data (2014) was also retrieved from NBA.com. This csv. file only contained the player names and respective college teams of those who were drafted after 2014. We used this list to match NCAA player stats to NBA stats by player full name (merging both data frames).
+     4. After merging everything in to one document we began cleaning up names using lubridate, replace functions, etc.
+
+## Setting Up Work Flow
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/data-science-assignments")
+```
+
+```{r}
+library(tidyverse)
+```
+# Below is the process we used to merge and or "bind" the NCAA datafarames to create one managible file called "pbp_all".
+
+```{r message=FALSE}
+
+pbp1 <- read_delim('data1', delim = ',')
+pbp2 <- read_delim('data2', delim = ',')
+pbp3 <- read_delim('data3', delim = ',')
+pbp4 <- read_delim('data4', delim = ',')
+
+pbp_all <- bind_rows(list(pbp1, pbp2, pbp3, pbp4))
+
+```
+```{r}
+head(pbp_all)
+colnames(pbp_all)
+
+```
+# Data Wrangling and Cleaning: 
+  We cleaned player fullnames, and filtered for observations that happened after the 2100 seconds, and grouped observations by player name. 
+```{r}
+# Clean player names
+pbp_all$player_full_name <- str_replace_all(pbp_all$player_full_name, "[,..'-]", "") 
+
+# Creating a subset for just the data at the end of the game
+pbp_end <- pbp_all %>% 
+  filter(elapsed_time_sec >= 2100)
+
+colnames(pbp_end)
+
+# Grouping observations by player full name, player id and event type.
+player_eventgroup <- pbp_end %>% 
+  group_by(player_id, player_full_name, event_type) %>% 
+  count() %>% 
+  spread(event_type, n) %>% 
+  arrange(player_id) %>% 
+  select(-teamtimeout, -officialtimeout)
+head(player_eventgroup)
+```
+
+# The code chunk below is to view the data frame that we created above
+```{r}
+# player_eventgroup
+
+# range(NBA_full_num$avg_points)
+```
+# Loading NBA Data, wrangling and cleaning similar to what we did above with NCAA play by play data.
+```{r}
+nba <- read_csv("NBA 2012 - 2018 season stats.csv")
+```
+
+```{r}
+#function for returning first part of split
+justname <- function(x, pattern, part=1){
+ return(strsplit(x, pattern)[[1]][part])
+}
+justname <- Vectorize(justname, vectorize.args = 'x') #set so it accepts vector args
+```
+
+```{r}
+nbastats <- nba %>%
+mutate(name = justname(PLAYER, ',')) %>%
+select(-PLAYER) #%>% #drop old name field
+ # filter(name %in% drafted_names)
+# returns 313, with duplicates.. appears to represent trades
+
+nba_names <- unname(unique(nbastats$name))
+
+nbastats
+
+#clean player names
+nbastats$name <- str_replace_all(nbastats$name, "[,..'-]", "") 
+```
+
+```{r warning=F, message=F}
+##Have to remove the characters after the comma with stringr, then run the following code chunk on that new data
+
+points <- nbastats %>% 
+  group_by(name) %>% 
+  summarise(avg_points = mean(as.numeric(`POINTS PER GAME`), na.rm = TRUE)) %>% 
+  filter(!is.na(avg_points)) %>% 
+  arrange(desc(avg_points))
+points
+```
+
+```{r}
+player_eventgroup
+```
+```{r}
+player_eventgroup$player_full_name <- str_replace_all(player_eventgroup$player_full_name, "[,..'-]", "") 
+
+player_eventgroup
+```
+# Lets join the data frames using the innerjoin function!
+```{r}
+inner_join(player_eventgroup, points, copy= TRUE, by = c('player_full_name' = 'name'))
+```
+
+```{r}
+NCAA_NBA_Joined <- inner_join(player_eventgroup, points, by = c('player_full_name' = 'name')) %>% ungroup()
+```
+#Lets take a look at our new joint data frame! 
+```{r}
+NCAA_NBA_Joined %>% arrange(avg_points) %>% select(player_full_name, avg_points, twopointmade, threepointmade, freethrowmade)
+```
+## More Data Cleaning... When will this end?
+Let's replace all NAs with 0s using the replace_na function.
+```{r}
+colnames(NCAA_NBA_Joined)
+
+#replacing NAs with 0s
+NBA_full <- sapply(NCAA_NBA_Joined, replace_na, replace = 0) %>% 
+  as_data_frame() %>%
+  select(-player_id, -player_full_name)
+
+#turning columns into numeric  
+NBA_full_num <- sapply(NBA_full, as.numeric) %>% 
+  as_data_frame()
+
+```
+
+## Descriptive Stats
+
+Lets begin by exploring the structure and dimensions of our new CLEAN data frame using basic descriptive stats function such as str(), summary(),glimpse()...
+```{r}
+str(NBA_full_num)
+```
+
+```{r}
+summary(NBA_full_num)
+```
+
+```{r}
+glimpse(NBA_full_num)
+```
+
+## Plots
+```{r}
+hist(log(NBA_full_num$avg_points))
+```
+
+```{r}
+hist(log(NBA_full_num$twopointmade))
+
+logtwopoint <- log(NBA_full_num$twopointmade)
+logavgpoint <- log(NBA_full_num$avg_points)
+```
+
+```{r}
+library(ggplot2)
+ggplot(NCAA_NBA_Joined, aes(x = player_full_name, y = avg_points)) + geom_point()
+```
+
+```{r}
+NCAA_NBA_Joined %>%
+  filter(avg_points>10) %>%
+  ggplot(aes(x = player_full_name, y = avg_points)) + geom_point() + coord_flip()
+
+NCAA_NBA_Joined %>%
+  filter(avg_points>10) %>% 
+  arrange(desc(twopointmade)) %>% 
+  select(player_full_name, avg_points, twopointmade)
+  
+```
+```{r}
+ggplot(data = NBA_full_num, mapping = aes(x=freethrowmade, y = avg_points)) +
+  geom_point() +
+  geom_smooth()
+
+ggplot(data = NBA_full_num, mapping = aes(y=twopointmade)) +
+  geom_boxplot()
+
+```
+
+```{r}
+ggplot(data = NBA_full_num, mapping = aes(x=threepointmade, y = avg_points)) +
+  geom_point() +
+  geom_smooth()
+```
+
+```{r}
+ggplot(data = NBA_full_num, mapping = aes(x=turnover, y = avg_points)) +
+  geom_point() +
+  geom_smooth()
+```
+```{r}
+# filter for players who score an averge of 10 points or more to see if this helps us see some correlation between the variables.
+
+over10 <- NBA_full_num %>% 
+  filter(avg_points >= 10)
+
+NBA_full_num <- NBA_full_num %>% 
+  mutate(allpoints = twopointmade + threepointmade + freethrowmade)
+
+ggplot(data = NBA_full_num, mapping = aes(x=allpoints, y = avg_points)) +
+  geom_point() +
+  geom_smooth()
+
+cor(x = NBA_full_num$allpoints, y = NBA_full_num$avg_points)
+```
+
+## Setting up cross-validation 
+```{r}
+library(caret)
+train_control <- trainControl(
+  method = 'repeatedcv',
+  number = 10,
+  repeats = 10
+)
+```
+
+```{r}
+x <- NBA_full_num[,c(1,2,3)]
+y <- NBA_full_num$avg_points
+
+colnames(x)
+```
+
+## Building models
+
+# Linear Regression
+```{r message=FALSE, warning=FALSE}
+lm1 <- train(
+  x = x,
+  y = y,
+  method = 'lm', # specify model
+  trControl = train_control # invoke your train contorl parameters
+)
+
+summary(lm1)
+```
+
+```{r}
+model <- lm(avg_points ~ . , data = NBA_full_num)
+summary(model)
+
+varImp(model) %>% 
+  as_data_frame %>% 
+  rownames_to_column %>% 
+  arrange(desc(Overall)) 
+
+```
+#Let's keep only the top 10 most important variables
+```{r}
+var_to_keep <- varImp(model) %>% 
+  as_data_frame %>% 
+  rownames_to_column %>% 
+  arrange(desc(Overall)) %>% 
+  top_n(10) %>% 
+  select(rowname) %>% 
+  as_vector()
+var_to_keep
+```
+
+```{r}
+model2 <- lm(avg_points ~ twopointmade + technicalfoul, freethrowmade + shootingfoul + assist + block + clearpathfoul + flagrantone + twopointmiss + offensivefoul , data = NBA_full_num)
+summary(model2)
+```
+
+### Rpart decision tree
+```{r message=FALSE, warning=FALSE}
+x <- NBA_full_num[, c(1, 2,3,13,14)]
+
+rpart1 <- train(
+  x = x,
+  y = y,
+  method = 'rpart', # specify model
+  trControl = train_control # invoke your train contorl parameters
+)
+
+plot(rpart1)
+names(rpart1)
+
+rpart1$results
+```
+
+## Conclusion: 
+After completing a linear model, rpart model (both were regressions) and cross-validation (because our data set was too small) we concluded that none of our variables were significant. Next steps, would be to collect more NCAA data, take into account conference leagues and ranking of instutitions. By inlcuding conference rankings as attirbutes we would beable to identify whether a NCAA player is great or if they were  just big fishes in small ponds. 
+
